@@ -15,6 +15,20 @@ from tkinter import ttk, messagebox
 # ── Load data once ────────────────────────────────────────────────────────────
 FRIB_FILE = "/mnt/c/Users/cbben/Desktop/FRIB_Rates.txt"
 MAGIC = [2, 8, 20, 28, 50, 82, 126]
+ELEMENTS = {
+    1:"H",2:"He",3:"Li",4:"Be",5:"B",6:"C",7:"N",8:"O",9:"F",10:"Ne",
+    11:"Na",12:"Mg",13:"Al",14:"Si",15:"P",16:"S",17:"Cl",18:"Ar",19:"K",20:"Ca",
+    21:"Sc",22:"Ti",23:"V",24:"Cr",25:"Mn",26:"Fe",27:"Co",28:"Ni",29:"Cu",30:"Zn",
+    31:"Ga",32:"Ge",33:"As",34:"Se",35:"Br",36:"Kr",37:"Rb",38:"Sr",39:"Y",40:"Zr",
+    41:"Nb",42:"Mo",43:"Tc",44:"Ru",45:"Rh",46:"Pd",47:"Ag",48:"Cd",49:"In",50:"Sn",
+    51:"Sb",52:"Te",53:"I",54:"Xe",55:"Cs",56:"Ba",57:"La",58:"Ce",59:"Pr",60:"Nd",
+    61:"Pm",62:"Sm",63:"Eu",64:"Gd",65:"Tb",66:"Dy",67:"Ho",68:"Er",69:"Tm",70:"Yb",
+    71:"Lu",72:"Hf",73:"Ta",74:"W",75:"Re",76:"Os",77:"Ir",78:"Pt",79:"Au",80:"Hg",
+    81:"Tl",82:"Pb",83:"Bi",84:"Po",85:"At",86:"Rn",87:"Fr",88:"Ra",89:"Ac",90:"Th",
+    91:"Pa",92:"U",93:"Np",94:"Pu",95:"Am",96:"Cm",97:"Bk",98:"Cf",99:"Es",100:"Fm",
+    101:"Md",102:"No",103:"Lr",104:"Rf",105:"Db",106:"Sg",107:"Bh",108:"Hs",109:"Mt",
+    110:"Ds",111:"Rg",112:"Cn",113:"Nh",114:"Fl",115:"Mc",116:"Lv",117:"Ts",118:"Og",
+}
 
 def load_data():
     rows = []
@@ -48,6 +62,25 @@ class FRIBApp(tk.Tk):
         self._build_canvas()
         self.update_plot()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_hover(self, event):
+        if event.inaxes != self.ax or self._annot is None:
+            if self._annot:
+                self._annot.set_visible(False)
+                self.canvas.draw_idle()
+            return
+        N = int(round(event.xdata))
+        Z = int(round(event.ydata))
+        sigma = self._hover_lookup.get((N, Z))
+        if sigma is not None:
+            sym = ELEMENTS.get(Z, f"Z{Z}")
+            self._annot.xy = (N, Z)
+            self._annot.set_text(f"$^{{{N+Z}}}${sym}  (N={N})\n"
+                                 f"σ_min = {sigma:.3e} {self._hover_units}")
+            self._annot.set_visible(True)
+        else:
+            self._annot.set_visible(False)
+        self.canvas.draw_idle()
 
     def _on_close(self):
         plt.close("all")
@@ -182,6 +215,11 @@ class FRIBApp(tk.Tk):
         toolbar.config(bg="#1a1a2e")
         toolbar.update()
 
+        self._annot = None
+        self._hover_lookup = {}
+        self._hover_units = "mb"
+        self.canvas.mpl_connect("motion_notify_event", self._on_hover)
+
     # ── Parsing helper ────────────────────────────────────────────────────────
     def _get(self, var, name):
         try:
@@ -241,8 +279,24 @@ class FRIBApp(tk.Tk):
             np.arange(Z0, Z1 + 2) - 0.5,
             grid,
             cmap=plt.cm.plasma_r, norm=norm,
+            edgecolors="#0f0f1a", linewidth=0.4,
             zorder=2,
         )
+
+        self._hover_units = units
+        self._hover_lookup = {
+            (int(row.N), int(row.Z)): row.sigma_min
+            for row in df[["N", "Z", "sigma_min"]].itertuples(index=False)
+        }
+
+        self._annot = self.ax.annotate(
+            "", xy=(0, 0), xytext=(15, 15), textcoords="offset points",
+            bbox=dict(boxstyle="round,pad=0.4", fc="#2a2a4e", ec="#7070ff", alpha=0.92),
+            color="white", fontsize=9, fontfamily="Consolas",
+            arrowprops=dict(arrowstyle="->", color="#aaaaff"),
+            zorder=10,
+        )
+        self._annot.set_visible(False)
 
         if self.v_show_magic.get():
             for m in MAGIC:
@@ -279,6 +333,7 @@ class FRIBApp(tk.Tk):
         self.ax.set_facecolor("#1a1a2e")
         self.ax.set_xlabel("Neutron Number  N", fontsize=12, color="white")
         self.ax.set_ylabel("Proton Number  Z", fontsize=12, color="white")
+        self.ax.set_ylim(top=94.5)
         self.ax.tick_params(colors="white")
 
         beam_label = f"{beam_t:.2g} s"
