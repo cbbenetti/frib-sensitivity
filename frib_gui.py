@@ -47,6 +47,11 @@ class FRIBApp(tk.Tk):
         self._build_controls()
         self._build_canvas()
         self.update_plot()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self):
+        plt.close("all")
+        self.destroy()
 
     # ── Control panel ─────────────────────────────────────────────────────────
     def _build_controls(self):
@@ -71,7 +76,7 @@ class FRIBApp(tk.Tk):
             return v
 
         # ── Section: Target ───────────────────────────────────────────────────
-        tk.Label(ctrl, text="── Target ──────────────────", **style).grid(
+        tk.Label(ctrl, text="-- Target ------------------", **style).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(8, 2))
 
         label(ctrl, "Thickness [atoms/cm²]", 1)
@@ -93,7 +98,7 @@ class FRIBApp(tk.Tk):
                       **btn_style).pack(side="left", padx=2, expand=True, fill="x")
 
         # ── Section: Rate limits ──────────────────────────────────────────────
-        tk.Label(ctrl, text="── Rate Limits [pps] ───────", **style).grid(
+        tk.Label(ctrl, text="-- Rate Limits [pps] -------", **style).grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(8, 2))
 
         label(ctrl, "Min rate (lower cutoff)", 5)
@@ -103,7 +108,7 @@ class FRIBApp(tk.Tk):
         self.v_max_rate = entry(ctrl, "1e8", 6)
 
         # ── Section: Sensitivity ──────────────────────────────────────────────
-        tk.Label(ctrl, text="── Sensitivity ─────────────", **style).grid(
+        tk.Label(ctrl, text="-- Sensitivity -------------", **style).grid(
             row=7, column=0, columnspan=2, sticky="w", pady=(8, 2))
 
         label(ctrl, "Min counts (N_min)", 8)
@@ -121,7 +126,7 @@ class FRIBApp(tk.Tk):
                            command=self.update_plot).pack(side="left")
 
         # ── Section: Display ──────────────────────────────────────────────────
-        tk.Label(ctrl, text="── Display ─────────────────", **style).grid(
+        tk.Label(ctrl, text="-- Display -----------------", **style).grid(
             row=10, column=0, columnspan=2, sticky="w", pady=(8, 2))
 
         self.v_show_magic = tk.BooleanVar(value=True)
@@ -216,20 +221,27 @@ class FRIBApp(tk.Tk):
         )
 
         # ── Redraw ─────────────────────────────────────────────────────────────
-        self.ax.cla()
         if self.cbar:
             self.cbar.remove()
             self.cbar = None
+        self.ax.cla()
 
         vmin = np.log10(n_min / (max_rate * target * beam_t) / unit_to_cm2)
         vmax = np.log10(n_min / (min_rate * target * beam_t) / unit_to_cm2)
 
-        sc = self.ax.scatter(
-            df["N"], df["Z"],
-            c=df["log10_sigma"],
-            cmap=plt.cm.plasma_r,
-            vmin=vmin, vmax=vmax,
-            s=6, marker="s", linewidths=0, zorder=2,
+        N_vals = df["N"].values
+        Z_vals = df["Z"].values
+        N0, N1 = N_vals.min(), N_vals.max()
+        Z0, Z1 = Z_vals.min(), Z_vals.max()
+        grid = np.full((Z1 - Z0 + 1, N1 - N0 + 1), np.nan)
+        grid[Z_vals - Z0, N_vals - N0] = df["log10_sigma"].values
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        sc = self.ax.pcolormesh(
+            np.arange(N0, N1 + 2) - 0.5,
+            np.arange(Z0, Z1 + 2) - 0.5,
+            grid,
+            cmap=plt.cm.plasma_r, norm=norm,
+            zorder=2,
         )
 
         if self.v_show_magic.get():
